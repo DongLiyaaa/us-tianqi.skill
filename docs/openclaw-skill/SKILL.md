@@ -40,7 +40,7 @@ Use the us-weather-radar-public skill. Start the local server, detect the active
 
 ## Recommended workflow
 
-1. Launch the server with the repo-local script in `docs/openclaw-skill/scripts/`.
+1. Launch the server with the repo-local script in `scripts/`.
 2. Read the actual port from stdout.
 3. Verify the health endpoint.
 4. Make the requested code or UI change.
