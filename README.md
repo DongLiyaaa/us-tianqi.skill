@@ -26,3 +26,11 @@
 - [demand-engine.mjs](./demand-engine.mjs)
 - [scripts/start.sh](./scripts/start.sh)
 - [scripts/health-check.sh](./scripts/health-check.sh)
+
+## 更新说明
+
+- 2026-04-05 版本
+- 大模型分析并发提升到 18 路
+- 温度、天气、湿度、体感数据均来自开放数据
+- 支持用户自行配置大模型
+- 支持用户新增自定义类目与赛道，用于分析天气对需求的影响
