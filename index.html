@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>美国天气需求地图</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <div class="utility-bar">
+      <button class="settings-button" id="openModelConfig" type="button">配置大模型</button>
+    </div>
+
+    <section class="top-ribbon glass-strip">
+      <div class="ribbon-item">
+        <span>市场范围</span>
+        <strong>United States</strong>
+      </div>
+      <div class="ribbon-item">
+        <div class="model-status-layout">
+          <div class="model-config-pane">
+            <span>大模型配置</span>
+            <div class="model-config-inline">
+              <span id="modelConfigStatus">未配置</span>
+            </div>
+          </div>
+          <div class="model-connection-pane">
+            <span>大模型状态</span>
+            <div class="config-connection-inline connection-unknown" id="modelConnectionInline">
+              <span id="modelConnectionStatus">未检测</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ribbon-item">
+        <span>决策输出</span>
+        <strong id="decisionOutputSummary">当前需求 / 增量 / 起量前夜 / 市场下行</strong>
+      </div>
+    </section>
+
+    <header class="hero">
+      <div class="hero-copy-wrap">
+        <p class="eyebrow">Seasonal Product Radar</p>
+        <h1>美国天气需求地图</h1>
+        <p class="hero-copy">
+          通过美国重点州的实时天气信号，快速判断当前产品需求、可抓的增量机会，以及即将起量的区域。
+        </p>
+        <div class="hero-tags">
+          <span>实时天气联动</span>
+          <span>州级热点判断</span>
+          <span>类目需求分层</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="dashboard">
+      <section class="map-panel glass-card">
+        <section class="hero-metrics hero-metrics-inline">
+          <div class="metric-card">
+            <span>实时数据源</span>
+            <strong id="sourceStatus">wttr.in</strong>
+          </div>
+          <div class="metric-card">
+            <span>当前城市</span>
+            <strong id="activeStateLabel">Los Angeles</strong>
+          </div>
+          <div class="metric-card signal-card">
+            <span>当前信号等级</span>
+            <strong id="signalLevel">分析中</strong>
+          </div>
+        </section>
+
+        <div class="panel-heading">
+          <div>
+            <p class="section-kicker">Interactive Map</p>
+            <h2>州级天气热点</h2>
+          </div>
+          <div class="legend">
+            <span><i class="dot hot"></i> 当前需求强</span>
+            <span><i class="dot warm"></i> 增量机会</span>
+            <span><i class="dot cool"></i> 即将起量</span>
+            <span><i class="dot down"></i> 市场下行</span>
+          </div>
+        </div>
+
+        <div class="analysis-overlay hidden" id="analysisOverlay" aria-hidden="true">
+          <div class="analysis-overlay-card" id="analysisOverlayText">正在分析 0 / 50</div>
+        </div>
+        <div class="data-time-note" id="dataTimeNote">数据时间：--。最新数据请刷新数据。</div>
+
+        <div class="us-map" id="mapRoot" aria-label="美国天气需求地图">
+          <div class="map-grid"></div>
+          <div class="map-corner west">West Coast</div>
+          <div class="map-corner east">East Coast</div>
+          <div class="map-frame" id="mapFrame" aria-hidden="true"></div>
+        </div>
+
+        <section class="charts-section charts-section-embedded">
+          <section class="chart-card chart-card-embedded">
+            <div class="chart-header">
+              <div>
+                <p class="section-kicker">24 Hours</p>
+                <h2>一天内天气趋势</h2>
+              </div>
+              <button class="ghost-action chart-download" data-range="day" type="button">下载 CSV</button>
+            </div>
+            <p class="chart-note">温度、体感温度、湿度与天气码按各自量纲归一化绘制，基于真实天气数据。</p>
+            <div class="chart-canvas" id="chartDay"></div>
+          </section>
+
+          <section class="chart-card chart-card-embedded">
+            <div class="chart-header">
+              <div>
+                <p class="section-kicker">7 Days</p>
+                <h2>近七天趋势</h2>
+              </div>
+              <button class="ghost-action chart-download" data-range="week" type="button">下载 CSV</button>
+            </div>
+            <p class="chart-note">展示近七天逐日的真实天气变化。</p>
+            <div class="chart-canvas" id="chartWeek"></div>
+          </section>
+
+          <section class="chart-card chart-card-embedded">
+            <div class="chart-header">
+              <div>
+                <p class="section-kicker">30 Days</p>
+                <h2>月维度趋势</h2>
+              </div>
+              <button class="ghost-action chart-download" data-range="month" type="button">下载 CSV</button>
+            </div>
+            <p class="chart-note">展示最近 30 天逐日数据。</p>
+            <div class="chart-canvas" id="chartMonth"></div>
+          </section>
+
+          <section class="chart-card chart-card-embedded">
+            <div class="chart-header">
+              <div>
+                <p class="section-kicker">5 Years Compare</p>
+                <h2>近七天近5年同比环比</h2>
+              </div>
+              <button class="ghost-action chart-download" data-range="compare7y" type="button">下载 CSV</button>
+            </div>
+            <p class="chart-note">按最近七天窗口，展示近 5 年的同比与环比对比。</p>
+            <div class="chart-canvas" id="chartCompare7y"></div>
+          </section>
+
+          <section class="chart-card chart-card-embedded chart-card-wide">
+            <div class="chart-header">
+              <div>
+                <p class="section-kicker">5 Years</p>
+                <h2>近五年月趋势</h2>
+              </div>
+              <button class="ghost-action chart-download" data-range="years" type="button">下载 CSV</button>
+            </div>
+            <p class="chart-note">基于近五年真实天气数据按月聚合。</p>
+            <div class="chart-canvas" id="chartYears"></div>
+          </section>
+        </section>
+      </section>
+
+      <aside class="insight-panel">
+        <section class="glass-card filters-card">
+          <div class="panel-heading compact">
+            <div>
+              <p class="section-kicker">Product Lens</p>
+              <h2>用户需求场景</h2>
+            </div>
+          </div>
+          <form class="custom-persona-form" id="customPersonaForm">
+            <label class="input-group">
+              <span>客户自定义输入</span>
+              <input id="customPersonaLabel" name="customPersonaLabel" type="text" maxlength="24" placeholder="例如：园艺补货">
+            </label>
+            <label class="input-group">
+              <span>场景说明</span>
+              <input id="customPersonaDescription" name="customPersonaDescription" type="text" maxlength="80" placeholder="例如：苗圃、花园维护、浇灌与修剪场景">
+            </label>
+            <button class="secondary-action" type="submit">保存自定义场景</button>
+          </form>
+          <div class="persona-grid" id="personaGrid"></div>
+        </section>
+
+        <section class="glass-card details-card">
+          <div class="panel-heading compact">
+            <div>
+              <p class="section-kicker">Demand Signal</p>
+              <h2 id="detailTitle">California</h2>
+            </div>
+            <div class="detail-actions">
+              <button class="ghost-action refresh-button" id="refreshWeather" type="button">刷新数据</button>
+              <div class="weather-badge" id="weatherBadge">载入中</div>
+            </div>
+          </div>
+
+          <div class="model-reminder hidden" id="modelReminder">未配置大模型，当前仅展示内置规则分析。请先点击右上角“配置大模型”后使用。</div>
+
+          <div class="detail-metrics">
+            <div>
+              <span>温度</span>
+              <strong id="tempValue">--</strong>
+            </div>
+            <div>
+              <span>天气</span>
+              <strong id="conditionValue">--</strong>
+            </div>
+            <div>
+              <span>体感</span>
+              <strong id="feelsValue">--</strong>
+            </div>
+          </div>
+
+          <section class="spotlight-card">
+            <div>
+              <p class="section-kicker">Spotlight</p>
+              <h3 id="spotlightTitle">California 市场窗口</h3>
+            </div>
+            <div class="spotlight-meters">
+              <div class="meter">
+                <span>需求强度</span>
+                <div class="meter-track"><i id="intensityBar" style="width: 42%"></i></div>
+              </div>
+              <div class="meter">
+                <span>起量预期</span>
+                <div class="meter-track"><i id="velocityBar" style="width: 58%"></i></div>
+              </div>
+            </div>
+          </section>
+
+          <div class="insight-block primary">
+            <h3>当前需求</h3>
+            <p id="currentDemand">正在分析中</p>
+          </div>
+          <div class="insight-block secondary">
+            <h3>增量机会</h3>
+            <p id="incrementalDemand">正在分析中</p>
+          </div>
+          <div class="insight-block tertiary">
+            <h3>即将起量</h3>
+            <p id="risingDemand">正在分析中</p>
+          </div>
+          <div class="insight-block quaternary">
+            <h3>市场下行</h3>
+            <p id="decliningDemand">正在分析中</p>
+          </div>
+
+        </section>
+      </aside>
+    </main>
+
+    <section class="disclaimer-card glass-card">
+      <p class="section-kicker">Notice</p>
+      <h2>开源数据统计。请关注微信公众号【冬离鸭冬离】。</h2>
+    </section>
+  </div>
+
+  <div class="modal-shell hidden" id="modelConfigModal" aria-hidden="true">
+    <div class="modal-backdrop" id="closeModelConfig"></div>
+    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modelConfigTitle">
+      <div class="panel-heading compact">
+        <div>
+          <p class="section-kicker">Model Settings</p>
+          <h2 id="modelConfigTitle">配置大模型</h2>
+        </div>
+      </div>
+      <form class="model-form" id="modelConfigForm">
+        <label class="input-group">
+          <span>Base URL</span>
+          <input id="modelBaseUrl" name="baseUrl" type="url" placeholder="https://api.example.com/v1">
+        </label>
+        <label class="input-group">
+          <span>模型 ID</span>
+          <input id="modelId" name="modelId" type="text" placeholder="gpt-4.1-mini">
+        </label>
+        <label class="input-group">
+          <span>密钥</span>
+          <input id="modelApiKey" name="apiKey" type="password" placeholder="sk-...">
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-action" id="clearModelConfig" type="button">清空</button>
+          <button class="ghost-action" id="testModelConfig" type="button">测试连接</button>
+          <button class="secondary-action" type="submit">保存配置</button>
+        </div>
+        <div class="model-form-footer">
+          <p class="model-test-feedback" id="modelTestFeedback">未检测连接状态</p>
+          <p class="model-config-note">大模型决定分析速度和分析质量</p>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
