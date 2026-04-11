@@ -1,9 +1,9 @@
 ---
-name: us-weather-radar-public
+name: us-tianqi
 description: Use when OpenClaw or another model-driven agent needs to work on this repository, start the local dashboard, verify local APIs, or update the weather-demand workflow without relying on any machine-specific paths or credentials.
 ---
 
-# US Weather Radar Public Skill
+# us-tianqi
 
 This repository-local skill is the open-source-safe version of the weather radar workflow.
 It is intentionally free of personal paths, local account names, fixed machine ports, and secrets.
@@ -22,7 +22,7 @@ It is intentionally free of personal paths, local account names, fixed machine p
 Use this template when asking OpenClaw to operate on the project:
 
 ```text
-Use the us-weather-radar-public skill for this repository.
+Use the us-tianqi skill for this repository.
 
 1. Start the local server using the repo-local launch script.
 2. Detect the active port from the server output instead of assuming a fixed port.
@@ -36,7 +36,7 @@ Use the us-weather-radar-public skill for this repository.
 Short version:
 
 ```text
-Use the us-weather-radar-public skill. Start the local server, detect the active port, verify the health endpoint, then inspect or update this repository and report the active URL plus verification results.
+Use the us-tianqi skill. Start the local server, detect the active port, verify the health endpoint, then inspect or update this repository and report the active URL plus verification results.
 ```
 
 ## Recommended workflow

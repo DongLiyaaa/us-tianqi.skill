@@ -8,8 +8,12 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "node server.mjs",
+    "start": "bash ./scripts/start.sh",
+    "serve": "node server.mjs",
     "dev": "node server.mjs",
-    "health": "bash ./scripts/health-check.sh"
+    "health": "bash ./scripts/health-check.sh",
+    "stop": "bash ./scripts/stop.sh",
+    "status": "bash ./scripts/status.sh",
+    "restart": "bash ./scripts/restart.sh"
   }
 }

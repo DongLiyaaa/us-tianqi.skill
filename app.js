@@ -85,6 +85,9 @@ let analysisOverlayDepth = 0;
 let activeAnalysisStateName = "";
 let usaMapData = null;
 let autoModelConfig = null;
+let runtimeFailureCount = 0;
+let runtimeRestartAttempted = false;
+let runtimeMonitorTimer = null;
 
 const seriesMeta = [
   { key: "temperature", label: "温度", className: "line-temp", color: "#3b82f6" },
@@ -895,11 +898,74 @@ async function renderRuntimeStatus() {
       : "API 未就绪";
     runtimeNote.classList.remove("runtime-note-pending", "runtime-note-error");
     runtimeNote.classList.add(payload.ok ? "runtime-note-success" : "runtime-note-error");
+    return Boolean(payload.ok);
   } catch (error) {
     runtimeApiStatus.textContent = "API 连接失败，请确认打开的是服务实际端口";
     runtimeNote.classList.remove("runtime-note-pending", "runtime-note-success");
     runtimeNote.classList.add("runtime-note-error");
+    return false;
   }
+}
+
+async function requestRuntimeRestart() {
+  runtimeApiStatus.textContent = "服务异常，正在尝试自动恢复...";
+  runtimeNote.classList.remove("runtime-note-success");
+  runtimeNote.classList.add("runtime-note-pending");
+
+  const response = await fetch("/api/runtime/restart", {
+    method: "POST",
+    headers: {
+      Accept: "application/json"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+}
+
+async function monitorRuntimeHealth() {
+  const healthy = await renderRuntimeStatus();
+  if (healthy) {
+    runtimeFailureCount = 0;
+    runtimeRestartAttempted = false;
+    return;
+  }
+
+  runtimeFailureCount += 1;
+  if (runtimeFailureCount < 2 || runtimeRestartAttempted) {
+    return;
+  }
+
+  runtimeRestartAttempted = true;
+
+  try {
+    await requestRuntimeRestart();
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1200));
+      const recovered = await renderRuntimeStatus();
+      if (recovered) {
+        runtimeApiStatus.textContent = "API 已自动恢复";
+        runtimeFailureCount = 0;
+        runtimeRestartAttempted = false;
+        return;
+      }
+    }
+    runtimeApiStatus.textContent = "自动恢复未完成，请执行 npm run restart";
+  } catch (error) {
+    runtimeApiStatus.textContent = "自动恢复失败，请执行 npm run restart";
+    runtimeNote.classList.remove("runtime-note-pending", "runtime-note-success");
+    runtimeNote.classList.add("runtime-note-error");
+  }
+}
+
+function startRuntimeMonitor() {
+  if (runtimeMonitorTimer) {
+    window.clearInterval(runtimeMonitorTimer);
+  }
+  runtimeMonitorTimer = window.setInterval(() => {
+    void monitorRuntimeHealth();
+  }, 15000);
 }
 
 function showAnalysisOverlay() {
@@ -1506,7 +1572,8 @@ async function bootstrap() {
   renderDecisionOutputSummary();
   renderModelConfigStatus();
   renderDataTimeNote();
-  renderRuntimeStatus();
+  await renderRuntimeStatus();
+  startRuntimeMonitor();
   bindModelConfig();
   bindCustomPersonaForm();
   bindRefreshWeather();

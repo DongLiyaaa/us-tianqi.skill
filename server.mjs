@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { once } from "node:events";
 import { homedir } from "node:os";
 import { extname, join, normalize } from "node:path";
@@ -14,6 +15,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = normalize(join(__filename, ".."));
 const weatherCache = {};
 const fileCacheDir = join(__dirname, ".cache", "weather");
+const runtimeDir = join(__dirname, ".runtime");
+const runtimeStateFile = join(runtimeDir, "active-port.json");
 const preferredPort = Number(process.env.PORT || 4200);
 
 const contentTypes = {
@@ -196,6 +199,32 @@ function slugKey(input) {
 
 async function ensureCacheDir() {
   await mkdir(fileCacheDir, { recursive: true });
+}
+
+async function ensureRuntimeDir() {
+  await mkdir(runtimeDir, { recursive: true });
+}
+
+async function writeRuntimeState(payload) {
+  await ensureRuntimeDir();
+  await writeFile(runtimeStateFile, JSON.stringify(payload, null, 2));
+}
+
+async function clearRuntimeState() {
+  const payload = await readJsonFileSafe(runtimeStateFile);
+  if (!payload || Number(payload.pid) === process.pid) {
+    await rm(runtimeStateFile, { force: true });
+  }
+}
+
+function restartInBackground() {
+  const child = spawn("bash", [join(__dirname, "scripts", "restart.sh")], {
+    cwd: __dirname,
+    detached: true,
+    stdio: "ignore",
+    env: process.env
+  });
+  child.unref();
 }
 
 async function readCacheFile(filePath, ttlMs, force) {
@@ -557,6 +586,26 @@ const server = createServer(async (req, res) => {
     return json(res, 200, publicModelConfig(config));
   }
 
+  if (url.pathname === "/api/runtime/status") {
+    return json(res, 200, {
+      ok: true,
+      pid: process.pid,
+      port: activePort || preferredPort,
+      origin: `http://127.0.0.1:${activePort || preferredPort}`,
+      startedAt: runtimeStartedAt
+    });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/runtime/restart") {
+    json(res, 202, {
+      ok: true,
+      message: "服务正在重启",
+      restarting: true
+    });
+    restartInBackground();
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/model/test") {
     try {
       const requestedConfig = await readJsonBody(req);
@@ -665,9 +714,63 @@ async function listenWithFallback(host, startPort) {
   }
 }
 
+let activePort = null;
+let shuttingDown = false;
+let runtimeStartedAt = null;
+
+async function shutdown(code = 0) {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
+
+  try {
+    await clearRuntimeState();
+  } catch (error) {
+    console.error("Failed to clear runtime state:", error);
+  }
+
+  try {
+    await new Promise((resolve) => {
+      server.close(() => resolve());
+    });
+  } catch {
+    // ignore close errors during shutdown
+  }
+
+  process.exit(code);
+}
+
+process.on("SIGINT", () => {
+  void shutdown(0);
+});
+
+process.on("SIGTERM", () => {
+  void shutdown(0);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error);
+  void shutdown(1);
+});
+
+process.on("unhandledRejection", (error) => {
+  console.error("Unhandled rejection:", error);
+  void shutdown(1);
+});
+
 listenWithFallback("127.0.0.1", preferredPort)
-  .then((activePort) => {
-    console.log(`Server running at http://127.0.0.1:${activePort}`);
+  .then(async (resolvedPort) => {
+    activePort = resolvedPort;
+    runtimeStartedAt = new Date().toISOString();
+    const origin = `http://127.0.0.1:${activePort}`;
+    await writeRuntimeState({
+      pid: process.pid,
+      port: activePort,
+      origin,
+      startedAt: runtimeStartedAt
+    });
+    console.log(`Server running at ${origin}`);
   })
   .catch((error) => {
     console.error("Failed to start server:", error);
