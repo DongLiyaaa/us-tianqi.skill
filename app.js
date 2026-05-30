@@ -1196,12 +1196,13 @@ function bindRefreshWeather() {
 
 function renderDetails(viewModel) {
   const { state, persona, weather, insight, meters } = viewModel;
+  const providerLabel = weather.providerLabel || weather.provider || "wttr.in";
 
   activeStateLabel.textContent = state.query;
   detailTitle.textContent = `${state.name} · ${persona.label}`;
-  sourceStatus.textContent = weather.source === "live" ? "wttr.in 实时" : "兜底数据";
+  sourceStatus.textContent = weather.source === "live" ? `${providerLabel} 实时` : providerLabel;
   signalLevel.textContent = tierLabel(insight.level);
-  weatherBadge.textContent = weather.source === "live" ? "实时天气已连接" : "wttr.in 异常，已兜底";
+  weatherBadge.textContent = weather.source === "live" ? `${providerLabel} 已连接` : `${providerLabel} 已兜底`;
   spotlightTitle.textContent = `${state.name} 市场窗口`;
   intensityBar.style.width = `${meters.intensity}%`;
   velocityBar.style.width = `${meters.velocity}%`;

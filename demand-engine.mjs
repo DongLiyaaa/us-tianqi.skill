@@ -1,4 +1,5 @@
 import usaMapData from "./usa-map-data.js";
+import { stateCentroids } from "./state-centroids.mjs";
 
 function slugStateName(name) {
   return name.toLowerCase().replace(/[^a-z]+/g, "");
@@ -47,6 +48,43 @@ export const fallbackWeather = {
 export const stateByKey = Object.fromEntries(states.map((state) => [state.key, state]));
 export const personaByKey = Object.fromEntries(personas.map((persona) => [persona.key, persona]));
 
+export const weatherProviders = [
+  { id: "open-meteo", label: "Open-Meteo" },
+  { id: "weather.gov", label: "weather.gov" },
+  { id: "wttr.in", label: "wttr.in" }
+];
+
+const weatherCodeLabels = {
+  0: "Clear sky",
+  1: "Mainly clear",
+  2: "Partly cloudy",
+  3: "Overcast",
+  45: "Fog",
+  48: "Depositing rime fog",
+  51: "Light drizzle",
+  53: "Drizzle",
+  55: "Dense drizzle",
+  56: "Freezing drizzle",
+  57: "Heavy freezing drizzle",
+  61: "Light rain",
+  63: "Rain",
+  65: "Heavy rain",
+  66: "Freezing rain",
+  67: "Heavy freezing rain",
+  71: "Light snow",
+  73: "Snow",
+  75: "Heavy snow",
+  77: "Snow grains",
+  80: "Rain showers",
+  81: "Heavy rain showers",
+  82: "Violent rain showers",
+  85: "Snow showers",
+  86: "Heavy snow showers",
+  95: "Thunderstorm",
+  96: "Thunderstorm with hail",
+  99: "Severe thunderstorm"
+};
+
 export function buildCustomPersona(label, description) {
   return {
     key: "custom_user_defined",
@@ -69,6 +107,174 @@ export function normalizeWeather(json) {
     windKmph: Number(current.windspeedKmph),
     precipMm: Number(current.precipMM || 0)
   };
+}
+
+function pickWeatherCoords(state) {
+  return stateCentroids[state.key] || null;
+}
+
+function getWeatherCodeLabel(code) {
+  return weatherCodeLabels[Number(code)] || `WMO ${code}`;
+}
+
+function fahrenheitToCelsius(value) {
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  return Math.round(((value - 32) * 5 / 9) * 10) / 10;
+}
+
+function mphToKmph(value) {
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  return Math.round(value * 1.60934 * 10) / 10;
+}
+
+function parseWindSpeedText(value) {
+  const match = String(value || "").match(/([\d.]+)/);
+  if (!match) {
+    return null;
+  }
+  return mphToKmph(Number(match[1]));
+}
+
+async function fetchWttrWeather(state) {
+  const endpoint = `https://wttr.in/${encodeURIComponent(state.query)}?format=j1`;
+  const response = await fetch(endpoint, {
+    headers: {
+      "User-Agent": "us-tianqi/1.0"
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const json = await response.json();
+  const normalized = normalizeWeather(json);
+  if (!normalized) {
+    throw new Error("Weather payload missing current condition");
+  }
+  return {
+    ...normalized,
+    source: "live",
+    provider: "wttr.in",
+    providerLabel: "wttr.in",
+    observedAt: new Date().toISOString()
+  };
+}
+
+async function fetchOpenMeteoWeather(state) {
+  const coords = pickWeatherCoords(state);
+  if (!coords) {
+    throw new Error("Missing state coordinates");
+  }
+
+  const endpoint = `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,wind_speed_10m,weather_code&timezone=auto`;
+  const response = await fetch(endpoint, {
+    headers: {
+      "User-Agent": "us-tianqi/1.0"
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const json = await response.json();
+  const current = json.current;
+  if (!current) {
+    throw new Error("Weather payload missing current object");
+  }
+
+  return {
+    tempC: Number(current.temperature_2m),
+    feelsLikeC: Number(current.apparent_temperature),
+    desc: getWeatherCodeLabel(current.weather_code),
+    humidity: Number(current.relative_humidity_2m),
+    windKmph: Number(current.wind_speed_10m),
+    precipMm: Number(current.precipitation || 0),
+    source: "live",
+    provider: "open-meteo",
+    providerLabel: "Open-Meteo",
+    observedAt: current.time || new Date().toISOString()
+  };
+}
+
+async function fetchWeatherGovWeather(state) {
+  const coords = pickWeatherCoords(state);
+  if (!coords) {
+    throw new Error("Missing state coordinates");
+  }
+
+  const headers = {
+    "User-Agent": "us-tianqi/1.0 (local dashboard)"
+  };
+  const pointsResponse = await fetch(`https://api.weather.gov/points/${coords.latitude},${coords.longitude}`, { headers });
+  if (!pointsResponse.ok) {
+    throw new Error(`Points HTTP ${pointsResponse.status}`);
+  }
+  const points = await pointsResponse.json();
+  const hourlyUrl = points?.properties?.forecastHourly;
+  if (!hourlyUrl) {
+    throw new Error("forecastHourly not found");
+  }
+
+  const forecastResponse = await fetch(hourlyUrl, { headers });
+  if (!forecastResponse.ok) {
+    throw new Error(`Forecast HTTP ${forecastResponse.status}`);
+  }
+  const forecast = await forecastResponse.json();
+  const period = forecast?.properties?.periods?.[0];
+  if (!period) {
+    throw new Error("Hourly forecast periods missing");
+  }
+
+  return {
+    tempC: fahrenheitToCelsius(Number(period.temperature)),
+    feelsLikeC: fahrenheitToCelsius(Number(period.temperature)),
+    desc: period.shortForecast || "Unknown",
+    humidity: Number(period.relativeHumidity?.value ?? 0),
+    windKmph: parseWindSpeedText(period.windSpeed) || 0,
+    precipMm: 0,
+    source: "live",
+    provider: "weather.gov",
+    providerLabel: "weather.gov",
+    observedAt: period.startTime || new Date().toISOString()
+  };
+}
+
+const liveWeatherProviderFetchers = [
+  { id: "open-meteo", label: "Open-Meteo", fetcher: fetchOpenMeteoWeather },
+  { id: "weather.gov", label: "weather.gov", fetcher: fetchWeatherGovWeather },
+  { id: "wttr.in", label: "wttr.in", fetcher: fetchWttrWeather }
+];
+
+async function fetchWeatherFromProviders(state) {
+  const diagnostics = [];
+
+  for (const provider of liveWeatherProviderFetchers) {
+    const startedAt = Date.now();
+    try {
+      const weather = await provider.fetcher(state);
+      diagnostics.push({
+        id: provider.id,
+        label: provider.label,
+        ok: true,
+        latencyMs: Date.now() - startedAt
+      });
+      return { weather, diagnostics };
+    } catch (error) {
+      diagnostics.push({
+        id: provider.id,
+        label: provider.label,
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  }
+
+  const lastError = diagnostics[diagnostics.length - 1]?.error || "No provider succeeded";
+  throw new Error(lastError);
 }
 
 export function tierClass(level) {
@@ -260,19 +466,9 @@ export async function fetchWeatherForState(state, weatherCache = {}) {
     return weatherCache[state.key];
   }
 
-  const endpoint = `https://wttr.in/${encodeURIComponent(state.query)}?format=j1`;
-
   try {
-    const response = await fetch(endpoint);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const json = await response.json();
-    const normalized = normalizeWeather(json);
-    if (!normalized) {
-      throw new Error("Weather payload missing current condition");
-    }
-    weatherCache[state.key] = { ...normalized, source: "live" };
+    const { weather } = await fetchWeatherFromProviders(state);
+    weatherCache[state.key] = weather;
     return weatherCache[state.key];
   } catch (error) {
     const fallback = fallbackWeather[state.key] || {
@@ -283,9 +479,72 @@ export async function fetchWeatherForState(state, weatherCache = {}) {
       windKmph: 12,
       precipMm: 0
     };
-    weatherCache[state.key] = { ...fallback, source: "fallback" };
+    weatherCache[state.key] = {
+      ...fallback,
+      source: "fallback",
+      provider: "fallback",
+      providerLabel: "内置兜底",
+      observedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : "Unknown error"
+    };
     return weatherCache[state.key];
   }
+}
+
+export async function probeWeatherProviders(stateKey, attempts = 1) {
+  const state = stateByKey[stateKey];
+  if (!state) {
+    throw new Error(`Unknown state: ${stateKey}`);
+  }
+
+  const totalRuns = Math.max(1, Math.min(10, Number(attempts) || 1));
+  const providers = [];
+
+  for (const provider of liveWeatherProviderFetchers) {
+    const samples = [];
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (let index = 0; index < totalRuns; index += 1) {
+      const startedAt = Date.now();
+      try {
+        const weather = await provider.fetcher(state);
+        successCount += 1;
+        samples.push({
+          ok: true,
+          latencyMs: Date.now() - startedAt,
+          weather
+        });
+      } catch (error) {
+        failureCount += 1;
+        samples.push({
+          ok: false,
+          latencyMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
+    }
+
+    providers.push({
+      id: provider.id,
+      label: provider.label,
+      attempts: totalRuns,
+      successCount,
+      failureCount,
+      successRate: Number((successCount / totalRuns).toFixed(2)),
+      averageLatencyMs: samples.length
+        ? Math.round(samples.reduce((sum, sample) => sum + sample.latencyMs, 0) / samples.length)
+        : null,
+      latest: samples[samples.length - 1] || null
+    });
+  }
+
+  return {
+    state,
+    attempts: totalRuns,
+    generatedAt: new Date().toISOString(),
+    providers
+  };
 }
 
 export async function getInsight(stateKey, personaKey, weatherCache = {}) {

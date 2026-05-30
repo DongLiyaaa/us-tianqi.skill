@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { getInsight, personas, states, tierLabel } from "./demand-engine.mjs";
+import { getInsight, personas, probeWeatherProviders, states, tierLabel, weatherProviders } from "./demand-engine.mjs";
 import { analysisSystemPrompt, buildAnalysisUserPrompt } from "./analysis-prompt.mjs";
 import { stateCentroids } from "./state-centroids.mjs";
 import usaMapData from "./usa-map-data.js";
@@ -510,7 +510,23 @@ async function handleInsight(req, res, url) {
 }
 
 async function handleStates(_req, res) {
-  json(res, 200, { ok: true, states, personas });
+  json(res, 200, { ok: true, states, personas, weatherProviders });
+}
+
+async function handleWeatherProviders(_req, res, url) {
+  const requestedState = (url.searchParams.get("state") || "california").toLowerCase();
+  const attempts = Number(url.searchParams.get("attempts") || 1);
+
+  try {
+    const payload = await probeWeatherProviders(requestedState, attempts);
+    json(res, 200, { ok: true, ...payload });
+  } catch (error) {
+    json(res, 400, {
+      ok: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+      validStates: states.map((state) => state.key)
+    });
+  }
 }
 
 async function handleTimeSeries(_req, res, url) {
@@ -575,6 +591,10 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === "/api/meta") {
     return handleStates(req, res);
+  }
+
+  if (url.pathname === "/api/weather/providers") {
+    return handleWeatherProviders(req, res, url);
   }
 
   if (url.pathname === "/api/map-data") {

@@ -34,6 +34,13 @@
 - 如果用户没有手动填写大模型配置，页面会自动尝试接入当前机器上 OpenClaw 已配置的默认模型。
 - 手动填写的 Base URL / 模型 ID / 密钥 仍然优先生效，OpenClaw 只作为兜底来源。
 
+## 天气数据源
+
+- 实时天气默认优先使用 `Open-Meteo`。
+- 如果 `Open-Meteo` 异常，会顺序降级到 `weather.gov` 和 `wttr.in`。
+- 如果公开天气源都失败，才会回退到项目内置兜底天气数据。
+- 可直接调用 `GET /api/weather/providers?state=california&attempts=5` 对单个州做多源稳定性探测。
+
 ## 主要文件
 
 - [index.html](./index.html)
